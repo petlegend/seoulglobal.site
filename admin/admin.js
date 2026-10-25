@@ -1,5 +1,8 @@
-// 서울글로벌 관리자 v1 — content/site.json 을 3개 언어로 고치고 GitHub 에 기록한다.
-// 보안: 토큰은 이 변수(메모리)에만 둔다. localStorage·쿠키에 저장하지 않는다. 화면에는 textContent/value 로만 쓴다(innerHTML 미사용).
+// 서울글로벌 관리자 v1.1 — content/site.json 을 3개 언어로 고치고 GitHub 에 기록한다.
+// 로그인(2026-10-25 대표 지시): 기기마다 처음 한 번 GitHub 열쇠를 넣고 비밀번호를 정하면, 열쇠를 그 비밀번호로 암호화해
+//   이 브라우저(localStorage)에만 보관한다. 다음부터 아이디 admin + 비밀번호로 연다. 비밀번호는 어디에도 저장하지 않는다.
+//   암호화: PBKDF2-SHA256 60만 회 → AES-GCM 256 (Web Crypto). 사이트 공개 파일에는 비밀번호·열쇠가 0개.
+// 화면에는 textContent/value 로만 쓴다(innerHTML 미사용).
 // 검사: i18n-core.mjs (사이트 빌드와 같은 규칙). 저장: site.json + i18n.lock.json 을 커밋 1개로 기록.
 import { leaves, hashInputs, validateData, buildLock } from './i18n-core.js';
 
@@ -36,33 +39,105 @@ const parts = (p) => p.replace(/\[(\d+)\]/g, '.$1').split('.');
 const getAt = (obj, p) => parts(p).reduce((o, k) => o?.[k], obj);
 function setAt(obj, p, v) { const ks = parts(p); const last = ks.pop(); ks.reduce((o, k) => o[k], obj)[last] = v; }
 
-// ---------- 로그인 ----------
+// ---------- 기기 등록(열쇠 암호화 보관) ----------
+const VAULT_KEY = 'sg_admin_vault_v1';
+const ITER = 600000;
+const enc = new TextEncoder();
+const b64 = (u8) => btoa(String.fromCharCode(...u8));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const store = { get: () => { try { return JSON.parse(localStorage.getItem(VAULT_KEY) || 'null'); } catch { return null; } },
+  set: (v) => { try { localStorage.setItem(VAULT_KEY, JSON.stringify(v)); return true; } catch { return false; } },
+  del: () => { try { localStorage.removeItem(VAULT_KEY); } catch {} } };
+async function deriveKey(id, pw, salt) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(`${id}\u0000${pw}`), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+async function sealToken(id, pw, tok) {
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await deriveKey(id, pw, salt), enc.encode(tok)));
+  return { v: 1, iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct), at: new Date().toISOString().slice(0, 10) };
+}
+async function openToken(id, pw, vault) {
+  const key = await deriveKey(id, pw, unb64(vault.salt));
+  return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(vault.iv) }, key, unb64(vault.ct)));
+}
+// 연속 실패 제한 (이 브라우저 기준): 5번 틀리면 30초씩 늘어나며 대기
+const lockout = { get: () => { try { return JSON.parse(sessionStorage.getItem('sg_fail') || '{"n":0,"until":0}'); } catch { return { n: 0, until: 0 }; } },
+  set: (o) => { try { sessionStorage.setItem('sg_fail', JSON.stringify(o)); } catch {} } };
+
+// ---------- 열쇠 확인 → 편집 화면 열기 ----------
+async function enter(tok) {
+  token = tok;
+  const user = await gh('/user').catch((e) => { throw new Error(String(e.message).startsWith('401') ? 'BAD' : e.message); });
+  let repo;
+  try { repo = await gh(`/repos/${REPO}`); } catch (e) { throw new Error(/^(403|404)/.test(e.message) ? 'NOREPO' : e.message); }
+  if (!repo.permissions?.push) throw new Error('NOPUSH');
+  await load();
+  $('who').textContent = `admin 로그인됨${user?.login ? ` (GitHub ${user.login})` : ''}`;
+  $('logout').hidden = false; $('login').hidden = true; $('app').hidden = false;
+}
+const reason = (m) => (m === 'BAD' ? 'GitHub 이 이 열쇠를 거부했습니다(401). 열쇠가 만료·삭제되었을 수 있습니다. 「이 기기 등록 지우기」 후 새 열쇠로 다시 등록하세요.'
+  : m === 'NOREPO' ? '열쇠는 맞지만 seoulglobal-renewal 저장소에 접근할 수 없습니다. 열쇠 설정의 Repository access 에서 petlegend/seoulglobal-renewal 을 선택했는지 확인하세요.'
+  : m === 'NOPUSH' ? '열쇠는 맞지만 쓰기 권한이 없습니다. Permissions → Contents 를 「Read and write」로 바꾸세요.'
+  : `로그인 실패: ${m}`);
+
+// 화면 고르기: 이 기기에 등록돼 있으면 아이디·비밀번호, 아니면 처음 등록
+function showLogin() {
+  const has = !!store.get();
+  $('pw-form').hidden = !has; $('login-form').hidden = has; $('howto').hidden = has;
+  (has ? $('uid') : $('token')).focus();
+}
+showLogin();
+$('remember').addEventListener('change', () => { $('set-pw').hidden = !$('remember').checked; });
+$('forget').addEventListener('click', () => { store.del(); lockout.set({ n: 0, until: 0 }); $('pw-msg').textContent = ''; showLogin(); });
+
+// 아이디·비밀번호 로그인
+$('pw-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('pw-msg'), lo = lockout.get();
+  const fail = (t) => { token = ''; msg.className = 'msg err'; msg.textContent = t; };
+  if (Date.now() < lo.until) return fail(`여러 번 틀려서 잠시 막혔습니다. ${Math.ceil((lo.until - Date.now()) / 1000)}초 뒤에 다시 시도하세요.`);
+  const id = $('uid').value.trim(), pw = $('upw').value;
+  $('upw').value = '';
+  msg.className = 'msg'; msg.textContent = '확인 중…';
+  let tok;
+  try { tok = await openToken(id, pw, store.get()); } catch {
+    const n = lo.n + 1;
+    lockout.set({ n, until: n >= 5 ? Date.now() + 30000 * (n - 4) : 0 });
+    return fail(`아이디 또는 비밀번호가 틀렸습니다${n >= 5 ? ' — 잠시 막힙니다' : ` (${n}/5)`}.`);
+  }
+  lockout.set({ n: 0, until: 0 });
+  try { await enter(tok); } catch (err) { fail(reason(String(err.message))); }
+});
+
+// 처음 등록(열쇠) 로그인
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = $('login-msg');
-  // 복사할 때 섞이기 쉬운 공백·줄바꿈·따옴표를 지운다 (열쇠 자체에는 이런 글자가 없다)
-  token = $('token').value.replace(/[\s"'`]/g, '');
-  $('token').value = '';
   const fail = (text) => { token = ''; msg.className = 'msg err'; msg.textContent = text; };
-  if (!/^(github_pat_[A-Za-z0-9_]{60,}|ghp_[A-Za-z0-9]{30,})$/.test(token)) {
-    return fail(`열쇠 모양이 아닙니다 (지금 ${token.length}글자, 앞부분 「${token.slice(0, 11)}」). 「github_pat_」로 시작하는 긴 글자(90자 안팎)를 처음부터 끝까지 복사했는지 확인하세요. 열쇠 이름이 아니라 만들 때 한 번만 보여 준 값입니다.`);
+  // 복사할 때 섞이기 쉬운 공백·줄바꿈·따옴표를 지운다 (열쇠 자체에는 이런 글자가 없다)
+  const tok = $('token').value.replace(/[\s"'`]/g, '');
+  if (!/^(github_pat_[A-Za-z0-9_]{60,}|ghp_[A-Za-z0-9]{30,})$/.test(tok)) {
+    return fail(`열쇠 모양이 아닙니다 (지금 ${tok.length}글자, 앞부분 「${tok.slice(0, 11)}」). 「github_pat_」로 시작하는 긴 글자(90자 안팎)를 처음부터 끝까지 복사했는지 확인하세요.`);
   }
+  const remember = $('remember').checked;
+  const id = $('new-id').value.trim(), pw = $('new-pw').value, pw2 = $('new-pw2').value;
+  if (remember) {
+    if (!id) return fail('아이디를 넣으세요.');
+    if (pw.length < 10 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) return fail('비밀번호는 10자 이상, 영문과 숫자를 섞어 주세요.');
+    if (pw !== pw2) return fail('비밀번호 두 칸이 서로 다릅니다.');
+  }
+  $('token').value = ''; $('new-pw').value = ''; $('new-pw2').value = '';
   msg.className = 'msg'; msg.textContent = '확인 중…';
   try {
-    const user = await gh('/user').catch((e) => { throw new Error(String(e.message).startsWith('401') ? 'BAD' : e.message); });
-    let repo;
-    try { repo = await gh(`/repos/${REPO}`); } catch (e) { throw new Error(/^(403|404)/.test(e.message) ? 'NOREPO' : e.message); }
-    if (!repo.permissions?.push) throw new Error('NOPUSH');
-    await load();
-    $('who').textContent = user?.login ? `${user.login} 로그인됨` : '로그인됨';
-    $('logout').hidden = false; $('login').hidden = true; $('app').hidden = false;
-  } catch (err) {
-    const m = String(err.message);
-    fail(m === 'BAD' ? 'GitHub 이 이 열쇠를 거부했습니다(401). ① 복사가 끝까지 됐는지 ② 이미 삭제·만료된 열쇠가 아닌지 확인하고, 안 되면 열쇠를 새로 만드세요.'
-      : m === 'NOREPO' ? '열쇠는 맞지만 seoulglobal-renewal 저장소에 접근할 수 없습니다. 열쇠 설정의 Repository access 에서 petlegend/seoulglobal-renewal 을 선택했는지 확인하세요.'
-      : m === 'NOPUSH' ? '열쇠는 맞지만 쓰기 권한이 없습니다. Permissions → Contents 를 「Read and write」로 바꾸세요.'
-      : `로그인 실패: ${m}`);
-  }
+    await enter(tok);   // 열쇠가 실제로 맞을 때만 이 기기에 등록한다
+    if (remember) {
+      const ok = store.set(await sealToken(id, pw, tok));
+      $('report').replaceChildren(el('li', { className: ok ? 'ok' : 'err', textContent: ok
+        ? `이 기기를 등록했습니다. 다음부터 아이디 「${id}」 + 비밀번호로 로그인하세요.`
+        : '이 브라우저가 저장을 막아 기기 등록을 하지 못했습니다(시크릿 창 등). 다음에도 열쇠를 넣어야 합니다.' }));
+    }
+  } catch (err) { fail(reason(String(err.message))); }
 });
 $('logout').addEventListener('click', () => { token = ''; location.reload(); });
 

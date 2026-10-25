@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
-<title>서울글로벌 관리자</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src https://api.github.com; base-uri 'none'; form-action 'none'"><title>서울글로벌 관리자</title>
 <link rel="stylesheet" href="admin.css">
 <script type="module" src="admin.js"></script>
 </head>
@@ -19,14 +18,38 @@
 
 <main id="login" class="login">
   <h1>관리자 로그인</h1>
-  <p>대표님 GitHub 계정(2단계 인증 사용)에서 만든 <b>이 저장소 전용 열쇠(토큰)</b>를 붙여 넣으세요. 열쇠는 이 창에만 잠시 보관되고 새로고침하면 지워집니다. 브라우저에 저장하지 마세요.</p>
-  <form id="login-form" autocomplete="off">
+
+  <!-- 이 기기에 등록된 경우: 아이디·비밀번호 -->
+  <form id="pw-form" hidden>
+    <label for="uid">아이디</label>
+    <input id="uid" type="text" autocomplete="username" spellcheck="false" required>
+    <label for="upw">비밀번호</label>
+    <input id="upw" type="password" autocomplete="current-password" required>
+    <button type="submit">로그인</button>
+    <p id="pw-msg" class="msg" role="status"></p>
+    <p class="muted small">이 기기에 등록된 관리자입니다. 다른 기기에서는 처음 한 번 열쇠 등록이 필요합니다.
+      <button id="forget" type="button" class="ghost small-btn">이 기기 등록 지우기</button></p>
+  </form>
+
+  <!-- 처음 한 번(기기마다): 열쇠 + 이 기기에서 쓸 비밀번호 정하기 -->
+  <form id="login-form" autocomplete="off" hidden>
+    <p>이 기기에서 처음 쓰는 경우입니다. 대표님 GitHub 계정(2단계 인증)에서 만든 <b>이 저장소 전용 열쇠(토큰)</b>를 붙여 넣고, 이 기기에서 쓸 비밀번호를 정하세요.</p>
     <label for="token">GitHub 토큰</label>
     <input id="token" type="password" spellcheck="false" autocomplete="off" placeholder="github_pat_…" required>
+    <label class="check"><input id="remember" type="checkbox" checked> 이 기기에서 다음부터 아이디·비밀번호로 로그인</label>
+    <div id="set-pw">
+      <label for="new-id">아이디</label>
+      <input id="new-id" type="text" value="admin" autocomplete="username" spellcheck="false">
+      <label for="new-pw">비밀번호 정하기 (10자 이상, 영문·숫자 섞어서)</label>
+      <input id="new-pw" type="password" autocomplete="new-password">
+      <label for="new-pw2">비밀번호 다시 입력</label>
+      <input id="new-pw2" type="password" autocomplete="new-password">
+      <p class="muted small">비밀번호는 어디에도 저장되지 않습니다. 열쇠가 이 비밀번호로 잠겨 이 브라우저에만 보관됩니다. 잊으면 「이 기기 등록 지우기」 후 열쇠를 다시 넣으면 됩니다.</p>
+    </div>
     <button type="submit">로그인</button>
     <p id="login-msg" class="msg" role="status"></p>
   </form>
-  <details>
+  <details id="howto" hidden>
     <summary>열쇠 만드는 법 (처음 한 번)</summary>
     <ol>
       <li>github.com → 오른쪽 위 사진 → Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token</li>

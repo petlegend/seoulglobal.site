@@ -18,6 +18,10 @@ textarea { resize: vertical; min-height: 40px; }
 .login form { display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--line); padding: 20px; }
 .login ol { padding-left: 1.2em; display: grid; gap: 6px; }
 .msg { min-height: 1.4em; margin: 0; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-top: 6px; }
+.check input { width: auto; }
+#set-pw { display: grid; gap: 6px; padding: 10px; border: 1px dashed var(--line); }
+.small-btn { padding: 3px 8px; font-size: 12px; margin-left: 6px; }
 .msg.err, .report .err { color: var(--danger); }
 .report .ok { color: var(--ok); }
 .app { display: grid; grid-template-columns: 200px minmax(0, 1fr) 260px; gap: 20px; padding: 20px max(16px, env(safe-area-inset-left, 0px)); align-items: start; }
