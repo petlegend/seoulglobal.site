@@ -61,7 +61,7 @@ html[lang="ko"] body { word-break: keep-all; overflow-wrap: break-word; }
 .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--on-brand); flex-shrink: 0; }
 .brand svg { width: 40px; height: 40px; }
 .brand .word { font-family: var(--logo); font-weight: 700; font-size: 20px; letter-spacing: -.01em; white-space: nowrap; }
-.brand .word b { color: var(--accent); font-weight: 700; } /* 워드마크 'Global' — 원본 로고 기준 */
+.brand .word b { color: #0070C0; font-weight: 700; } /* 워드마크 'Global' — 원본 로고 기준 */
 .brand .grp { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .16em; color: var(--on-brand-muted); margin-top: -2px; }
 .menu { display: flex; align-items: center; gap: 22px; margin-left: auto; }
 .menu ul { display: flex; gap: 20px; list-style: none; margin: 0; padding: 0; font-size: 14.5px; }
