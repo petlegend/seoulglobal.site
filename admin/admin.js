@@ -1,10 +1,14 @@
-// 서울글로벌 관리자 v1.1 — content/site.json 을 3개 언어로 고치고 GitHub 에 기록한다.
+// 서울글로벌 관리자 v1.2 — content/site.json 을 3개 언어로 고치고 GitHub 에 기록한다.
+// v1.2(2026-10-25): 2단계 인증 — 비밀번호 + 이 기기의 패스키(Windows Hello 지문·PIN). 아래 「기기 등록」 참고.
 // 로그인(2026-10-25 대표 지시): 기기마다 처음 한 번 GitHub 열쇠를 넣고 비밀번호를 정하면, 열쇠를 그 비밀번호로 암호화해
 //   이 브라우저(localStorage)에만 보관한다. 다음부터 아이디 admin + 비밀번호로 연다. 비밀번호는 어디에도 저장하지 않는다.
 //   암호화: PBKDF2-SHA256 60만 회 → AES-GCM 256 (Web Crypto). 사이트 공개 파일에는 비밀번호·열쇠가 0개.
 // 화면에는 textContent/value 로만 쓴다(innerHTML 미사용).
 // 검사: i18n-core.mjs (사이트 빌드와 같은 규칙). 저장: site.json + i18n.lock.json 을 커밋 1개로 기록.
 import { leaves, hashInputs, validateData, buildLock } from './i18n-core.js';
+
+// 다른 사이트가 이 화면을 틀(iframe) 안에 넣어 클릭을 가로채지 못하게 한다 (GitHub Pages 는 frame-ancestors 헤더를 못 씀)
+if (window.top !== window.self) { document.documentElement.replaceChildren(); throw new Error('framed'); }
 
 const REPO = 'petlegend/seoulglobal-renewal';
 const BRANCH = 'main';
@@ -40,25 +44,67 @@ const getAt = (obj, p) => parts(p).reduce((o, k) => o?.[k], obj);
 function setAt(obj, p, v) { const ks = parts(p); const last = ks.pop(); ks.reduce((o, k) => o[k], obj)[last] = v; }
 
 // ---------- 기기 등록(열쇠 암호화 보관) ----------
-const VAULT_KEY = 'sg_admin_vault_v1';
+// v2(2026-10-25, 2단계 인증): 열쇠를 「비밀번호」와 「이 기기의 패스키(Windows Hello 지문·PIN 등)」 두 가지가 모두 있어야 풀리게 잠근다.
+//   키 = HKDF( PBKDF2(아이디·비밀번호) ‖ 패스키 PRF 출력 ). 패스키 비밀값은 기기 보안칩 밖으로 나오지 않는다.
+//   v1(비밀번호만) 보관함은 다음 로그인 때 패스키를 만들어 v2 로 옮긴다(열쇠 재입력 불필요).
+const VAULT_KEY = 'sg_admin_vault_v2', OLD_VAULT_KEY = 'sg_admin_vault_v1';
 const ITER = 600000;
 const enc = new TextEncoder();
-const b64 = (u8) => btoa(String.fromCharCode(...u8));
+const b64 = (u8) => btoa(String.fromCharCode(...new Uint8Array(u8)));
 const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-const store = { get: () => { try { return JSON.parse(localStorage.getItem(VAULT_KEY) || 'null'); } catch { return null; } },
-  set: (v) => { try { localStorage.setItem(VAULT_KEY, JSON.stringify(v)); return true; } catch { return false; } },
-  del: () => { try { localStorage.removeItem(VAULT_KEY); } catch {} } };
-async function deriveKey(id, pw, salt) {
-  const base = await crypto.subtle.importKey('raw', enc.encode(`${id}\u0000${pw}`), 'PBKDF2', false, ['deriveKey']);
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
+const slot = (k) => ({ get: () => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } },
+  set: (v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+  del: () => { try { localStorage.removeItem(k); } catch {} } });
+const store = slot(VAULT_KEY), oldStore = slot(OLD_VAULT_KEY);
+async function pwBits(id, pw, salt) {
+  const base = await crypto.subtle.importKey('raw', enc.encode(`${id}\u0000${pw}`), 'PBKDF2', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: ITER, hash: 'SHA-256' }, base, 256));
 }
+async function aesKey(ikm, salt, info, iter) {
+  if (!info) { // v1: 비밀번호만
+    const base = await crypto.subtle.importKey('raw', ikm, 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  }
+  const base = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode(info) }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+const concat = (a, b) => { const o = new Uint8Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
+
+// 패스키: 기기 인증(지문·얼굴·PIN) + PRF 로 32바이트 비밀값을 얻는다. 서버가 없으므로 challenge 는 무작위(서명 검증 대신 PRF 값으로 확인).
+const prfOf = (cred) => cred?.getClientExtensionResults?.().prf?.results?.first;
+async function passkeyGet(credId, prfSalt) {
+  const cred = await navigator.credentials.get({ publicKey: { challenge: rand(32), allowCredentials: [{ type: 'public-key', id: unb64(credId) }],
+    userVerification: 'required', timeout: 120000, extensions: { prf: { eval: { first: unb64(prfSalt) } } } } });
+  const out = prfOf(cred);
+  if (!out) throw new Error('NOPRF');
+  return new Uint8Array(out);
+}
+async function passkeyCreate(prfSalt) {
+  if (!window.PublicKeyCredential) throw new Error('NOPRF');
+  const cred = await navigator.credentials.create({ publicKey: { challenge: rand(32), rp: { name: 'Seoul Global 관리자' },
+    user: { id: rand(16), name: 'admin', displayName: 'Seoul Global 관리자' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    authenticatorSelection: { userVerification: 'required', residentKey: 'discouraged' }, timeout: 120000, attestation: 'none',
+    extensions: { prf: { eval: { first: prfSalt } } } } });
+  const credId = b64(cred.rawId), ext = cred.getClientExtensionResults().prf;
+  if (!ext?.enabled && !ext?.results) throw new Error('NOPRF');
+  // 만들 때 값을 주지 않는 기기도 있다 → 한 번 더 인증해서 받는다
+  const out = ext.results?.first ? new Uint8Array(ext.results.first) : await passkeyGet(credId, b64(prfSalt));
+  return { credId, out };
+}
+// 열쇠 잠그기(v2): 비밀번호 + 새 패스키
 async function sealToken(id, pw, tok) {
-  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await deriveKey(id, pw, salt), enc.encode(tok)));
-  return { v: 1, iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct), at: new Date().toISOString().slice(0, 10) };
+  const salt = rand(16), iv = rand(12), prfSalt = rand(32);
+  const pk = await passkeyCreate(prfSalt);
+  const key = await aesKey(concat(await pwBits(id, pw, salt), pk.out), salt, 'sg-admin-v2');
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(tok)));
+  return { v: 2, iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct), cred: pk.credId, prfSalt: b64(prfSalt), at: new Date().toISOString().slice(0, 10) };
 }
 async function openToken(id, pw, vault) {
-  const key = await deriveKey(id, pw, unb64(vault.salt));
+  const salt = unb64(vault.salt);
+  const key = vault.v === 2
+    ? await aesKey(concat(await pwBits(id, pw, salt), await passkeyGet(vault.cred, vault.prfSalt)), salt, 'sg-admin-v2')
+    : await aesKey(enc.encode(`${id}\u0000${pw}`), salt, '', vault.iter);
   return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(vault.iv) }, key, unb64(vault.ct)));
 }
 // 연속 실패 제한 (이 브라우저 기준): 5번 틀리면 30초씩 늘어나며 대기
@@ -82,14 +128,22 @@ const reason = (m) => (m === 'BAD' ? 'GitHub 이 이 열쇠를 거부했습니�
   : `로그인 실패: ${m}`);
 
 // 화면 고르기: 이 기기에 등록돼 있으면 아이디·비밀번호, 아니면 처음 등록
+const vaultNow = () => store.get() || oldStore.get();
+// 패스키 단계 실패 사유 (비밀번호 틀림과 구분 — 실패 횟수에 넣지 않는다)
+const pkReason = (e) => (e?.message === 'NOPRF'
+  ? '이 기기·브라우저는 2단계 인증(패스키 PRF)을 지원하지 않습니다. PC 크롬 최신판(Windows Hello)에서 등록하세요.'
+  : e?.name === 'NotAllowedError' ? '2단계 인증(지문·PIN 확인)이 취소되었거나 시간이 지났습니다. 다시 로그인하세요.'
+  : e?.name === 'InvalidStateError' ? '이 기기에 이미 같은 패스키가 있습니다. 「이 기기 등록 지우기」 후 다시 등록하세요.'
+  : `2단계 인증 실패: ${e?.name || ''} ${e?.message || e}`);
+const isPk = (e) => e?.message === 'NOPRF' || ['NotAllowedError', 'InvalidStateError', 'SecurityError', 'NotSupportedError', 'AbortError'].includes(e?.name);
 function showLogin() {
-  const has = !!store.get();
+  const has = !!vaultNow();
   $('pw-form').hidden = !has; $('login-form').hidden = has; $('howto').hidden = has;
   (has ? $('uid') : $('token')).focus();
 }
 showLogin();
 $('remember').addEventListener('change', () => { $('set-pw').hidden = !$('remember').checked; });
-$('forget').addEventListener('click', () => { store.del(); lockout.set({ n: 0, until: 0 }); $('pw-msg').textContent = ''; showLogin(); });
+$('forget').addEventListener('click', () => { store.del(); oldStore.del(); lockout.set({ n: 0, until: 0 }); $('pw-msg').textContent = ''; showLogin(); });
 
 // 아이디·비밀번호 로그인
 $('pw-form').addEventListener('submit', async (e) => {
@@ -99,14 +153,23 @@ $('pw-form').addEventListener('submit', async (e) => {
   if (Date.now() < lo.until) return fail(`여러 번 틀려서 잠시 막혔습니다. ${Math.ceil((lo.until - Date.now()) / 1000)}초 뒤에 다시 시도하세요.`);
   const id = $('uid').value.trim(), pw = $('upw').value;
   $('upw').value = '';
-  msg.className = 'msg'; msg.textContent = '확인 중…';
+  const vault = vaultNow();
+  msg.className = 'msg';
+  msg.textContent = vault.v === 2 ? '2단계 인증 — 지문·PIN 확인 창이 뜹니다…' : '확인 중…';
   let tok;
-  try { tok = await openToken(id, pw, store.get()); } catch {
+  try { tok = await openToken(id, pw, vault); } catch (err) {
+    if (isPk(err)) return fail(pkReason(err));
     const n = lo.n + 1;
     lockout.set({ n, until: n >= 5 ? Date.now() + 30000 * (n - 4) : 0 });
     return fail(`아이디 또는 비밀번호가 틀렸습니다${n >= 5 ? ' — 잠시 막힙니다' : ` (${n}/5)`}.`);
   }
   lockout.set({ n: 0, until: 0 });
+  if (vault.v !== 2) {
+    // 비밀번호만으로 잠긴 옛 등록 → 이번에 패스키를 만들어 2단계로 옮겨야 들어갈 수 있다
+    msg.textContent = '2단계 인증 등록 — 이 기기의 지문·PIN 으로 패스키를 만듭니다. 확인 창이 두 번 뜰 수 있습니다…';
+    try { if (!store.set(await sealToken(id, pw, tok))) throw new Error('저장 실패(시크릿 창 등)'); oldStore.del(); }
+    catch (err) { return fail(isPk(err) ? pkReason(err) : `2단계 인증 등록 실패: ${err.message}`); }
+  }
   try { await enter(tok); } catch (err) { fail(reason(String(err.message))); }
 });
 
@@ -131,13 +194,16 @@ $('login-form').addEventListener('submit', async (e) => {
   msg.className = 'msg'; msg.textContent = '확인 중…';
   try {
     await enter(tok);   // 열쇠가 실제로 맞을 때만 이 기기에 등록한다
-    if (remember) {
-      const ok = store.set(await sealToken(id, pw, tok));
-      $('report').replaceChildren(el('li', { className: ok ? 'ok' : 'err', textContent: ok
-        ? `이 기기를 등록했습니다. 다음부터 아이디 「${id}」 + 비밀번호로 로그인하세요.`
-        : '이 브라우저가 저장을 막아 기기 등록을 하지 못했습니다(시크릿 창 등). 다음에도 열쇠를 넣어야 합니다.' }));
-    }
-  } catch (err) { fail(reason(String(err.message))); }
+  } catch (err) { return fail(reason(String(err.message))); }
+  if (!remember) return;
+  const say = (ok, t) => $('report').replaceChildren(el('li', { className: ok ? 'ok' : 'err', textContent: t }));
+  say(true, '2단계 인증 등록 — 이 기기의 지문·PIN 확인 창이 뜹니다(두 번 뜰 수 있음)…');
+  try {
+    const ok = store.set(await sealToken(id, pw, tok));
+    if (ok) oldStore.del();
+    say(ok, ok ? `이 기기를 등록했습니다. 다음부터 아이디 「${id}」 + 비밀번호 + 지문·PIN(2단계)으로 로그인하세요.`
+      : '이 브라우저가 저장을 막아 기기 등록을 하지 못했습니다(시크릿 창 등). 다음에도 열쇠를 넣어야 합니다.');
+  } catch (err) { say(false, `기기 등록을 하지 못했습니다 — ${isPk(err) ? pkReason(err) : err.message} 이번 접속은 계속 쓸 수 있고, 다음에는 열쇠를 다시 넣어야 합니다.`); }
 });
 $('logout').addEventListener('click', () => { token = ''; location.reload(); });
 
@@ -241,6 +307,6 @@ $('save').addEventListener('click', async () => {
     await gh(`/repos/${REPO}/git/refs/heads/${BRANCH}`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha, force: false }) });
     baseSha = commit.sha; original = JSON.parse(JSON.stringify(draft)); lock = newLock; $('reason').value = '';
     markChanged();
-    $('report').replaceChildren(el('li', { className: 'ok', textContent: `저장 완료 (${commit.sha.slice(0, 7)}). 자동 검사가 끝나면 GitHub → Actions → deploy 로 배포하세요.` }));
+    $('report').replaceChildren(el('li', { className: 'ok', textContent: `저장 완료 (${commit.sha.slice(0, 7)}). 자동 검사가 끝나면 사이트에 자동 반영됩니다(2~3분).` }));
   } catch (e) { alertReport(e); } finally { btn.disabled = false; }
 });
