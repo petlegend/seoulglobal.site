@@ -72,6 +72,8 @@ async function aesKey(ikm, salt, info, iter) {
 const concat = (a, b) => { const o = new Uint8Array(a.length + b.length); o.set(a); o.set(b, a.length); return o; };
 
 // 패스키: 기기 인증(지문·얼굴·PIN) + PRF 로 32바이트 비밀값을 얻는다. 서버가 없으므로 challenge 는 무작위(서명 검증 대신 PRF 값으로 확인).
+// 패스키 이름 — Windows 패스키 목록에서 펫레전드 관리자와 구분되게 (2026-10-25 대표 지시). 이름이 다른 옛 패스키는 다음 로그인 때 새로 만든다
+const PK_USER = 'seoulglobal-admin';
 const prfOf = (cred) => cred?.getClientExtensionResults?.().prf?.results?.first;
 async function passkeyGet(credId, prfSalt) {
   const cred = await navigator.credentials.get({ publicKey: { challenge: rand(32), allowCredentials: [{ type: 'public-key', id: unb64(credId) }],
@@ -83,7 +85,7 @@ async function passkeyGet(credId, prfSalt) {
 async function passkeyCreate(prfSalt) {
   if (!window.PublicKeyCredential) throw new Error('NOPRF');
   const cred = await navigator.credentials.create({ publicKey: { challenge: rand(32), rp: { name: 'Seoul Global 관리자' },
-    user: { id: rand(16), name: 'admin', displayName: 'Seoul Global 관리자' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+    user: { id: rand(16), name: PK_USER, displayName: 'Seoul Global admin (seoulglobal.co.kr)' }, pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
     authenticatorSelection: { userVerification: 'required', residentKey: 'discouraged' }, timeout: 120000, attestation: 'none',
     extensions: { prf: { eval: { first: prfSalt } } } } });
   const credId = b64(cred.rawId), ext = cred.getClientExtensionResults().prf;
@@ -98,7 +100,7 @@ async function sealToken(id, pw, tok) {
   const pk = await passkeyCreate(prfSalt);
   const key = await aesKey(concat(await pwBits(id, pw, salt), pk.out), salt, 'sg-admin-v2');
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(tok)));
-  return { v: 2, iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct), cred: pk.credId, prfSalt: b64(prfSalt), at: new Date().toISOString().slice(0, 10) };
+  return { v: 2, pk: PK_USER, iter: ITER, salt: b64(salt), iv: b64(iv), ct: b64(ct), cred: pk.credId, prfSalt: b64(prfSalt), at: new Date().toISOString().slice(0, 10) };
 }
 async function openToken(id, pw, vault) {
   const salt = unb64(vault.salt);
@@ -164,9 +166,9 @@ $('pw-form').addEventListener('submit', async (e) => {
     return fail(`아이디 또는 비밀번호가 틀렸습니다${n >= 5 ? ' — 잠시 막힙니다' : ` (${n}/5)`}.`);
   }
   lockout.set({ n: 0, until: 0 });
-  if (vault.v !== 2) {
-    // 비밀번호만으로 잠긴 옛 등록 → 이번에 패스키를 만들어 2단계로 옮겨야 들어갈 수 있다
-    msg.textContent = '2단계 인증 등록 — 이 기기의 지문·PIN 으로 패스키를 만듭니다. 확인 창이 두 번 뜰 수 있습니다…';
+  if (vault.v !== 2 || vault.pk !== PK_USER) {
+    // 비밀번호만으로 잠긴 옛 등록, 또는 이름이 「admin」 인 옛 패스키 → 이번에 「seoulglobal-admin」 패스키를 만들어 다시 잠근다(열쇠 재입력 없음)
+    msg.textContent = `2단계 인증 등록 — 이 기기의 지문·PIN 으로 패스키 「${PK_USER}」를 만듭니다. 확인 창이 두 번 뜰 수 있습니다…`;
     try { if (!store.set(await sealToken(id, pw, tok))) throw new Error('저장 실패(시크릿 창 등)'); oldStore.del(); }
     catch (err) { return fail(isPk(err) ? pkReason(err) : `2단계 인증 등록 실패: ${err.message}`); }
   }
