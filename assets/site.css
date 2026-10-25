@@ -115,7 +115,7 @@ html[lang="ko"] body { word-break: keep-all; overflow-wrap: break-word; }
 .hero .btn.ghost { background: #fff; color: var(--ink); border-color: var(--line); }
 .hero .btn.ghost:hover { border-color: var(--accent); filter: none; }
 .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
-.clocks { border: 1px solid var(--line); border-top: 3px solid var(--sky); border-radius: 14px; background: #fff; box-shadow: var(--shadow); padding: 22px 24px; display: grid; gap: 18px; }
+.clocks { border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: var(--shadow); padding: 22px 24px; display: grid; gap: 18px; }
 .clock { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 4px 12px; }
 .clock .city { font-family: var(--display); font-size: 18px; }
 .clock .tz { font-family: var(--mono); font-size: 12px; color: var(--on-brand-muted); grid-column: 1; }
