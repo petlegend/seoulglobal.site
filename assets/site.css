@@ -369,3 +369,11 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 6px; }
 .sns-band { padding: 0 !important; }
 .site-footer .langs a { display: inline-flex; }
 .ft-contact a, .ft-contact button { border-radius: 999px !important; align-items: center !important; }
+
+/* 하단 관계회사 로고 — 가로 배치, 누르면 각 사이트로 */
+.aff-logos { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 6px; }
+.aff-logos a, .aff-logos > span { display: inline-flex; align-items: center; height: 52px; padding: 0 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; transition: border-color .15s, transform .15s; }
+.aff-logos a:hover { border-color: var(--accent); transform: translateY(-1px); }
+.aff-logos img { display: block; height: 26px; width: auto; }
+.aff-logos img[width="40"] { height: 40px; }
+.aff-word { font: 700 14px var(--font-latin); letter-spacing: .03em; color: #0F1B2D; white-space: nowrap; }
