@@ -2,6 +2,7 @@
 :root { --bg: #F3F8FB; --surface: #FFFFFF; --ink: #0A0F14; --muted: #56636F; --line: #D3E2EB; --accent: #0070C0; --sky: #00AEEF; --brand: #000000; --danger: #B3261E; --ok: #1B7F3B;
   --font: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", Arial, sans-serif; }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* 로그인 전 편집 화면 숨김 — .app 의 display:grid 보다 우선 */
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.6 var(--font); }
 button { font: 600 14px var(--font); border: 0; border-radius: 2px; padding: 9px 14px; background: var(--accent); color: #fff; cursor: pointer; }
 button.ghost { background: transparent; color: inherit; border: 1px solid var(--line); }
