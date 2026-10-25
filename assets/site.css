@@ -148,11 +148,15 @@ html[lang="ko"] body { word-break: keep-all; overflow-wrap: break-word; }
 .tile .go { margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--accent); }
 
 /* ---------- 개인정보 처리방침 요약 (홈 하단) ---------- */
-.pv-brief { padding-block: 36px; border-top: 1px solid var(--line); background: var(--surface); }
-.pv-brief h2 { font-size: 16px; margin-bottom: 10px; }
-.pv-brief ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 13px; color: var(--muted); }
-.pv-brief li b { color: var(--ink); font-weight: 600; margin-right: 6px; }
-.pv-brief .since { margin-top: 10px; font-size: 12px; color: var(--muted); }
+/* 개인정보 처리방침 전문 페이지 (petlegend.co.kr 방식 — 번호 항목) */
+.pv-full .wrap { max-width: 860px; }
+.pv-intro { color: var(--muted); padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.pv-full ol { list-style: none; counter-reset: pv; margin: 0; padding: 0; }
+.pv-full li { counter-increment: pv; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.pv-full li h2 { font-size: 17px; margin-bottom: 8px; }
+.pv-full li h2::before { content: counter(pv) ". "; color: var(--accent); }
+.pv-full li p { color: var(--ink); font-size: 15px; }
+.pv-full .since { margin-top: 22px; font-size: 13px; color: var(--muted); }
 .ft-privacy { font-weight: 700; }
 /* SNS 띠 (모든 페이지, 푸터 바로 위) — 주소가 없으면 「준비 중」 */
 .sns-band { background: var(--brand-raise); color: var(--on-brand); border-top: 3px solid var(--sky); }
