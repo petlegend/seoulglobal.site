@@ -377,3 +377,11 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 6px; }
 .aff-logos img { display: block; height: 26px; width: auto; }
 .aff-logos img[width="40"] { height: 40px; }
 .aff-word { font: 700 14px var(--font-latin); letter-spacing: .03em; color: #0F1B2D; white-space: nowrap; }
+/* 그룹사 카드 로고 (회사명·주소 대신) */
+.node .co-logo { display: inline-flex; align-items: center; height: 56px; margin: 4px 0 2px; }
+.node .co-logo img { height: 34px; width: auto; }
+.node .co-logo img[width="40"] { height: 52px; }
+.node .co-logo:hover { opacity: .85; }
+.kids > div { grid-template-rows: auto 1fr; } .kids .node { height: 100%; align-content: start; } /* 카드 윗선·높이 맞춤 */
+.aff-logos img[width="42"] { height: 40px; } .node .co-logo img[width="42"] { height: 52px; } /* 도모쿱 사각 로고 */
+.aff-logos img[width="44"] { height: 42px; } .node .co-logo img[width="44"] { height: 64px; } /* 도모펫 정사각 로고 */
