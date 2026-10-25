@@ -385,3 +385,10 @@ legend { font-size: 13px; font-weight: 500; padding: 0; margin-bottom: 6px; }
 .kids > div { grid-template-rows: auto 1fr; } .kids .node { height: 100%; align-content: start; } /* 카드 윗선·높이 맞춤 */
 .aff-logos img[width="42"] { height: 40px; } .node .co-logo img[width="42"] { height: 52px; } /* 도모쿱 사각 로고 */
 .aff-logos img[width="44"] { height: 42px; } .node .co-logo img[width="44"] { height: 64px; } /* 도모펫 정사각 로고 */
+
+/* 메인 소개 단락 (검색 최적화용 짧은 소개) */
+.intro { padding-block: 56px; }
+.intro .wrap { max-width: 860px; }
+.intro h2 { font-size: clamp(22px, 2.6vw, 28px); margin-bottom: 14px; }
+.intro p { color: var(--muted); font-size: 16.5px; }
+.intro .btn { margin-top: 18px; }
