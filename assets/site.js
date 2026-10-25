@@ -54,7 +54,7 @@
     var href = el.getAttribute('href') || '';
     if (el.id === 'form-mail') track('inquiry');                                   // 상담 신청서 → 이메일로 보내기
     else if (href.indexOf('tel:') === 0) track('call');                            // 전화
-    else if (el.classList.contains('copy-num') || href.indexOf('wa.me/') > -1) track('messenger'); // 카카오톡·WhatsApp
+    else if (el.classList.contains('copy-num') || href.indexOf('wa.me/') > -1 || href.indexOf('pf.kakao.com/') > -1) track('messenger'); // 카톡 상담(채널)·WhatsApp
     else if (href.indexOf('mailto:') === 0) track('email');                        // 이메일
   });
 

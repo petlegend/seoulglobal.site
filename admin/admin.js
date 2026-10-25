@@ -16,7 +16,7 @@ const API = 'https://api.github.com';
 const FILES = { content: 'content/site.json', lock: 'content/i18n.lock.json', rules: 'content/rules.json' };
 const LABEL = { meta: '검색 노출 문구', ui: '공통 문구', nav: '메뉴', hero: '첫 화면', creds: '요약 띠', about: '회사소개', founder: '회장소개',
   vision: '비전·미션', reconnect: '거래 재개', services: '서비스', process: '진행 절차', group: '그룹사', compliance: '준법 원칙',
-  contact: '문의', footer: '푸터·연락', privacy: '개인정보 처리방침', notFound: '없는 주소(404) 화면' };
+  contact: '문의', footer: '푸터·연락', privacy: '개인정보 처리방침', notFound: '없는 주소(404) 화면', seo: '검색 제목·설명' };
 const ORDER = ['contact', 'footer', 'about', 'founder', 'hero', 'services', 'process', 'reconnect', 'vision', 'group', 'creds', 'nav', 'meta', 'ui', 'compliance', 'privacy'];
 const LEGAL = new Set(['privacy', 'compliance']);
 
