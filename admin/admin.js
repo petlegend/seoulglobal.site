@@ -40,20 +40,28 @@ function setAt(obj, p, v) { const ks = parts(p); const last = ks.pop(); ks.reduc
 $('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const msg = $('login-msg');
-  token = $('token').value.trim();
+  // 복사할 때 섞이기 쉬운 공백·줄바꿈·따옴표를 지운다 (열쇠 자체에는 이런 글자가 없다)
+  token = $('token').value.replace(/[\s"'`]/g, '');
   $('token').value = '';
+  const fail = (text) => { token = ''; msg.className = 'msg err'; msg.textContent = text; };
+  if (!/^(github_pat_[A-Za-z0-9_]{60,}|ghp_[A-Za-z0-9]{30,})$/.test(token)) {
+    return fail(`열쇠 모양이 아닙니다 (지금 ${token.length}글자, 앞부분 「${token.slice(0, 11)}」). 「github_pat_」로 시작하는 긴 글자(90자 안팎)를 처음부터 끝까지 복사했는지 확인하세요. 열쇠 이름이 아니라 만들 때 한 번만 보여 준 값입니다.`);
+  }
   msg.className = 'msg'; msg.textContent = '확인 중…';
   try {
-    const repo = await gh(`/repos/${REPO}`);
-    if (!repo.permissions?.push) throw new Error('이 토큰에 저장소 쓰기 권한(Contents: Read and write)이 없습니다');
-    const user = await gh('/user').catch(() => null);
+    const user = await gh('/user').catch((e) => { throw new Error(String(e.message).startsWith('401') ? 'BAD' : e.message); });
+    let repo;
+    try { repo = await gh(`/repos/${REPO}`); } catch (e) { throw new Error(/^(403|404)/.test(e.message) ? 'NOREPO' : e.message); }
+    if (!repo.permissions?.push) throw new Error('NOPUSH');
     await load();
     $('who').textContent = user?.login ? `${user.login} 로그인됨` : '로그인됨';
     $('logout').hidden = false; $('login').hidden = true; $('app').hidden = false;
   } catch (err) {
-    token = '';
-    msg.className = 'msg err';
-    msg.textContent = String(err.message).startsWith('401') ? '토큰이 올바르지 않거나 만료되었습니다.' : `로그인 실패: ${err.message}`;
+    const m = String(err.message);
+    fail(m === 'BAD' ? 'GitHub 이 이 열쇠를 거부했습니다(401). ① 복사가 끝까지 됐는지 ② 이미 삭제·만료된 열쇠가 아닌지 확인하고, 안 되면 열쇠를 새로 만드세요.'
+      : m === 'NOREPO' ? '열쇠는 맞지만 seoulglobal-renewal 저장소에 접근할 수 없습니다. 열쇠 설정의 Repository access 에서 petlegend/seoulglobal-renewal 을 선택했는지 확인하세요.'
+      : m === 'NOPUSH' ? '열쇠는 맞지만 쓰기 권한이 없습니다. Permissions → Contents 를 「Read and write」로 바꾸세요.'
+      : `로그인 실패: ${m}`);
   }
 });
 $('logout').addEventListener('click', () => { token = ''; location.reload(); });
