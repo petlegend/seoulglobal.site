@@ -22,6 +22,10 @@
   }
   tick(); setInterval(tick, 30000);
 
+  // 좁은 화면 메뉴 띠: 지금 보고 있는 메뉴가 띠 가운데 보이게 밀어 둔다
+  var cur = document.querySelector('.menu ul a[aria-current="page"]');
+  if (cur) { var ul = cur.closest('ul'); if (ul.scrollWidth > ul.clientWidth) ul.scrollLeft = cur.offsetLeft - (ul.clientWidth - cur.offsetWidth) / 2; }
+
   // 모바일 메뉴
   var header = document.querySelector('.site-header');
   var toggle = $('menu-toggle');
